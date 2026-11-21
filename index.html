@@ -6,35 +6,35 @@
   <style>
     body {
       margin: 0;
-      min-height: 100vh;
+      height: 100vh;
       background: #040407;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 16px;
+      gap: 12px;
       overflow: hidden;
       user-select: none;
     }
     svg#c {
-      width: clamp(220px, 58vmin, 410px);
-      height: clamp(220px, 58vmin, 410px);
+      width: max(200px, min(94vw, calc(100vh - 155px)));
+      height: max(200px, min(94vw, calc(100vh - 155px)));
       background: #040407;
       display: block;
       cursor: pointer;
     }
     #hud {
-      width: clamp(240px, 78vmin, 310px);
+      width: clamp(250px, 84vw, 330px);
       background: #08080e;
       border: 1px solid #191926;
-      padding: 10px 12px;
+      padding: 9px 12px;
       font-family: inherit;
       font-size: 11px;
       letter-spacing: 0.07em;
       color: #c8c8dc;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
     }
     .head {
       display: flex;
