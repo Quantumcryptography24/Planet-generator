@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Planet</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      background: #040407;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      overflow: hidden;
+      user-select: none;
+      font-family: ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+    }
+    canvas {
+      width: min(62vmin, 420px);
+      height: min(62vmin, 420px);
+      image-rendering: pixelated;
+      cursor: pointer;
+    }
+    #hud {
+      width: min(62vmin, 260px);
+      background: #08080e;
+      border: 1px solid #191926;
+      padding: 10px 12px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: #c8c8dc;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #191926;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    .seed-wrap {
+      display: flex;
+      align-items: center;
+    }
+    .dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      margin-right: 7px;
+    }
+    #seed-in {
+      width: 64px;
+      background: #0f0f18;
+      border: 1px solid #242436;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      padding: 2px 5px;
+      outline: none;
+      text-transform: uppercase;
+    }
+    #seed-in:focus {
+      border-color: #5a5a82;
+    }
+    #rnd-btn {
+      color: #6c6c88;
+      cursor: pointer;
+    }
+    #rnd-btn:hover {
+      color: #ffffff;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+    }
+    .lbl {
+      color: #5a5a72;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="128" height="128"></canvas>
+  <div id="hud">
+    <div class="head">
+      <span class="seed-wrap"><i class="dot" id="p-dot"></i><input id="seed-in" maxlength="6" spellcheck="false" autocomplete="off"></span>
+      <span id="rnd-btn">[ RND ]</span>
+    </div>
+    <div class="row"><span class="lbl">TYPE</span><span id="p-type"></span></div>
+    <div class="row"><span class="lbl">TEMP</span><span id="p-temp"></span></div>
+    <div class="row"><span class="lbl">GRAV</span><span id="p-grav"></span></div>
+    <div class="row"><span class="lbl">ORBIT</span><span id="p-orbit"></span></div>
+  </div>
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const seedInput = document.getElementById('seed-in');
+    const S = 128, H = S / 2;
+    const CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
+
+    const PLANETS = [
+      { type: 'terran', label: 'TERRAN',      temp: [-5, 32],     atmo: [70,150,255],  pal: [[12,26,56],[26,72,142],[54,152,96],[205,240,220]] },
+      { type: 'ocean',  label: 'OCEANIC',     temp: [2, 28],      atmo: [50,200,235],  pal: [[8,20,48],[16,56,118],[38,142,172],[185,245,230]] },
+      { type: 'gas',    label: 'GAS GIANT',   temp: [-160, -90],  atmo: [235,175,110], pal: [[58,34,20],[146,86,46],[216,156,92],[248,226,178]] },
+      { type: 'icegas', label: 'ICE GIANT',   temp: [-220, -175], atmo: [80,175,255],  pal: [[14,24,64],[32,78,168],[78,162,235],[192,238,255]] },
+      { type: 'lava',   label: 'VOLCANIC',    temp: [420, 980],   atmo: [255,95,35],   pal: [[24,8,14],[76,20,28],[218,66,22],[255,214,78]] },
+      { type: 'ice',    label: 'GLACIAL',     temp: [-190, -45],  atmo: [150,225,255], pal: [[20,38,66],[68,128,178],[158,214,242],[244,252,255]] },
+      { type: 'desert', label: 'ARID',        temp: [35, 85],     atmo: [235,165,80],  pal: [[56,26,16],[138,68,34],[212,134,64],[248,208,138]] },
+      { type: 'crater', label: 'BARREN',      temp: [-140, 110],  atmo: null,          pal: [[24,24,30],[66,66,76],[126,126,138],[198,198,210]] },
+      { type: 'alien',  label: 'XENO-FLORA',  temp: [12, 44],     atmo: [165,90,255],  pal: [[22,14,42],[64,32,98],[36,168,142],[162,252,198]] },
+      { type: 'toxic',  label: 'TOXIC',       temp: [90, 310],    atmo: [175,215,55],  pal: [[34,38,16],[92,106,32],[168,188,54],[234,246,136]] },
+      { type: 'cyber',  label: 'CYBER-WORLD', temp: [18, 26],     atmo: [75,220,255],  pal: [[12,16,26],[34,42,60],[74,88,112],[255,202,86]] },
+      { type: 'rust',   label: 'FERRIC',      temp: [-65, 15],    atmo: [215,90,70],   pal: [[42,14,16],[114,34,32],[186,74,56],[238,156,126]] }
+    ];
+
+    const MOON_PALS = [
+      [[24,24,30],[70,70,80],[135,135,148],[205,205,218]],
+      [[22,38,62],[72,130,175],[165,218,242],[242,252,255]],
+      [[48,20,18],[125,45,35],[195,95,62],[242,175,130]],
+      [[30,14,22],[95,28,34],[215,75,28],[255,205,75]]
+    ];
+
+    const RING_LABELS = ['NO RINGS', 'DUAL RING', 'TRIPLE RING', 'DUST RING', 'RAZOR RING'];
+
+    function makeRng(seed) {
+      let a = seed >>> 0;
+      return function() {
+        a |= 0;
+        a = a + 0x6D2B79F5 | 0;
+        let t = Math.imul(a ^ a >>> 15, 1 | a);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    }
+
+    const rand = (rng, a, b) => a + rng() * (b - a);
+    const randInt = (rng, a, b) => Math.floor(rand(rng, a, b + 1));
+
+    function charVal(ch) {
+      const idx = CHARS.indexOf(ch);
+      return idx >= 0 ? idx : 0;
+    }
+
+    function fbm(x, y, z, s) {
+      let n = Math.sin(x * 1.3 + Math.cos(y * 1.5 + s)) + Math.cos(y * 1.4 + Math.sin(z * 1.3 - s));
+      n += 0.5 * (Math.sin(z * 2.7 + Math.cos(x * 2.9 + s)) + Math.cos(x * 2.6 - Math.sin(y * 2.8)));
+      return n * 0.45;
+    }
+
+    function drawFromSeed(rawSeed) {
+      const s = (rawSeed.toUpperCase().replace(/[^0-9A-Z]/g, '') + '000000').slice(0, 6);
+      const c0 = charVal(s[0]);
+      const c1 = charVal(s[1]);
+      const c2 = charVal(s[2]);
+      const c3 = charVal(s[3]);
+      const c4 = charVal(s[4]);
+      const c5 = charVal(s[5]);
+
+      const rngMoon = makeRng(c2 * 9973 + 17);
+      const rngRot  = makeRng(c3 * 7919 + 31);
+      const rngSurf = makeRng(c4 * 6271 + 53);
+      const rngSky  = makeRng(c5 * 4999 + 89);
+
+      const img = ctx.createImageData(S, S);
+      const d = img.data;
+      const setPx = (x, y, [r, g, b]) => {
+        if (x < 0 || x >= S || y < 0 || y >= S) return;
+        const i = (y * S + x) * 4;
+        d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255;
+      };
+
+      const spec = PLANETS[c0 % PLANETS.length];
+      const ringStyle = c1 % 5;
+      const moonCount = c2 % 4;
+
+      const tilt = rand(rngRot, -0.75, 0.75);
+      const squash = rand(rngRot, 2.7, 4.4);
+      const lAngle = rand(rngRot, -0.65, 0.65);
+      const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
+      const lx = -0.62 * Math.cos(lAngle), ly = -0.45, lz = 0.64 * Math.cos(lAngle);
+
+      const R = randInt(rngSurf, 20, 29);
+      const surfSeed = rand(rngSurf, 0, 200);
+      const freq = rand(rngSurf, 2.2, 4.4);
+      const maxRing = Math.min(2.25, 58 / R);
+
+      const craters = [];
+      if (['crater', 'desert', 'ice', 'rust'].includes(spec.type)) {
+        const count = randInt(rngSurf, 5, 11);
+        for (let i = 0; i < count; i++) {
+          const a = rand(rngSurf, 0, Math.PI * 2), z = rand(rngSurf, -0.85, 0.85), rxy = Math.sqrt(1 - z * z);
+          craters.push({ x: Math.cos(a) * rxy, y: z, z: Math.sin(a) * rxy, r: rand(rngSurf, 0.14, 0.34) });
+        }
+      }
+
+      const storm = (spec.type === 'gas' || spec.type === 'icegas') && rngSurf() > 0.35
+        ? { y: rand(rngSurf, -0.45, 0.45), z: rand(rngSurf, 0.2, 0.85), x: rand(rngSurf, -0.5, 0.5), r: rand(rngSurf, 0.18, 0.28) }
+        : null;
+
+      const moons = [];
+      for (let m = 0; m < moonCount; m++) {
+        const mr = randInt(rngMoon, 2, 5);
+        const angle = rand(rngMoon, 0, Math.PI * 2);
+        const dist = rand(rngMoon, R + mr + 6, 54);
+        moons.push({
+          x: Math.round(H + Math.cos(angle) * dist),
+          y: Math.round(H + Math.sin(angle) * dist * rand(rngMoon, 0.45, 0.95)),
+          r: mr,
+          inFront: rngMoon() > 0.45,
+          pal: MOON_PALS[randInt(rngMoon, 0, MOON_PALS.length - 1)]
+        });
+      }
+
+      for (let i = 0; i < 65; i++) {
+        const sx = randInt(rngSky, 0, S - 1), sy = randInt(rngSky, 0, S - 1);
+        const b = randInt(rngSky, 75, 245);
+        const tint = rngSky();
+        const col = tint < 0.2 ? [b, b * 0.85 | 0, b * 0.65 | 0]
+                  : tint < 0.4 ? [b * 0.75 | 0, b * 0.88 | 0, b]
+                  : [b, b, b];
+        setPx(sx, sy, col);
+        if (i < 4) {
+          const dim = col.map(v => v * 0.45 | 0);
+          setPx(sx - 1, sy, dim); setPx(sx + 1, sy, dim);
+          setPx(sx, sy - 1, dim); setPx(sx, sy + 1, dim);
+        }
+      }
+
+      const drawMoon = (m) => {
+        for (let dy = -m.r; dy <= m.r; dy++) {
+          for (let dx = -m.r; dx <= m.r; dx++) {
+            const nx = dx / m.r, ny = dy / m.r, d2 = nx * nx + ny * ny;
+            if (d2 > 1) continue;
+            const nz = Math.sqrt(1 - d2);
+            const lit = nx * lx + ny * ly + nz * lz;
+            const shade = lit < -0.15 ? 0 : lit < 0.2 ? 1 : lit < 0.55 ? 2 : 3;
+            setPx(m.x + dx, m.y + dy, m.pal[shade]);
+          }
+        }
+      };
+
+      moons.filter(m => !m.inFront).forEach(drawMoon);
+
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const px = x - H, py = y - H;
+          const dx = px / R, dy = py / R;
+          const d2 = dx * dx + dy * dy;
+          const dither = (BAYER[(y & 3) * 4 + (x & 3)] / 16 - 0.5) * 0.16;
+
+          const rx = px * cosT - py * sinT;
+          const ry = (px * sinT + py * cosT) * squash;
+          const rDist = Math.hypot(rx, ry) / R;
+
+          let inRing = false, ringTone = 2;
+          if (ringStyle > 0 && rDist > 1.28 && rDist < maxRing) {
+            if (ringStyle === 1) {
+              inRing = Math.abs(rDist - 1.72) > 0.06;
+              ringTone = rDist < 1.72 ? 3 : 2;
+            } else if (ringStyle === 2) {
+              inRing = Math.abs(rDist - 1.54) > 0.045 && Math.abs(rDist - 1.88) > 0.045;
+              ringTone = rDist < 1.54 ? 2 : rDist < 1.88 ? 3 : 1;
+            } else if (ringStyle === 3) {
+              inRing = ((x + y) & 1) === 0 || (rDist > 1.45 && rDist < 1.9);
+              ringTone = rDist < 1.65 ? 2 : 1;
+            } else if (ringStyle === 4) {
+              inRing = rDist > 1.55 && rDist < 1.76;
+              ringTone = 3;
+            }
+          }
+
+          if (inRing && ry < 0 && d2 > 1) {
+            const inShadow = rx > 0.25 * R && Math.abs(ry) < R * 1.4;
+            setPx(x, y, spec.pal[inShadow ? 0 : ringTone]);
+          }
+
+          if (spec.atmo && d2 > 1 && d2 <= 1.13 && ((x ^ y) & 1)) {
+            setPx(x, y, spec.atmo);
+          }
+
+          if (d2 <= 1) {
+            const dz = Math.sqrt(1 - d2);
+            let light = dx * lx + dy * ly + dz * lz;
+            const isGas = spec.type === 'gas' || spec.type === 'icegas';
+            const sy = isGas ? dy * 3.8 : dy;
+            let n = fbm(dx * freq + surfSeed, sy * freq + surfSeed, dz * (isGas ? 0.5 : freq) + surfSeed, surfSeed);
+
+            for (let c of craters) {
+              const cd = Math.hypot(dx - c.x, dy - c.y, dz - c.z);
+              if (cd < c.r * 0.76) light -= 0.32;
+              else if (cd < c.r) light += 0.26;
+            }
+
+            if (storm) {
+              const sd = Math.hypot((dx - storm.x) * 0.7, (dy - storm.y) * 1.4, dz - storm.z);
+              if (sd < storm.r) n += (1 - sd / storm.r) * 0.95;
+            }
+
+            let val = light + n * 0.28 + dither;
+            let shade = val < -0.14 ? 0 : val < 0.22 ? 1 : val < 0.56 ? 2 : 3;
+
+            if (['terran', 'ocean', 'rust'].includes(spec.type) && Math.abs(dy) + n * 0.1 > 0.82 && light > -0.25) {
+              shade = 3;
+            }
+            if (spec.type === 'lava' && Math.abs(n) < 0.07) shade = 3;
+            if (spec.type === 'cyber' && light < 0.15) {
+              const gx = Math.floor((dx + 2) * 18), gy = Math.floor((dy + 2) * 18), gz = Math.floor((dz + 2) * 18);
+              if (((gx * 73 ^ gy * 151 ^ gz * 283) & 15) === 0 && n > -0.1) shade = 3;
+            }
+
+            setPx(x, y, spec.pal[shade]);
+          }
+
+          if (inRing && (ry >= 0 || d2 > 1) && !(ry < 0 && d2 > 1)) {
+            setPx(x, y, spec.pal[ringTone]);
+          }
+        }
+      }
+
+      moons.filter(m => m.inFront).forEach(drawMoon);
+      ctx.putImageData(img, 0, 0);
+
+      const accent = spec.pal[2];
+      const isGas = spec.type === 'gas' || spec.type === 'icegas';
+      const grav = ((R / 24) * (isGas ? 1.85 : 0.95)).toFixed(2) + 'g';
+      const moonTxt = moons.length === 0 ? '0 MOONS' : moons.length + (moons.length === 1 ? ' MOON' : ' MOONS');
+
+      document.getElementById('p-dot').style.background = `rgb(${accent[0]},${accent[1]},${accent[2]})`;
+      document.getElementById('p-type').textContent = spec.label;
+      document.getElementById('p-temp').textContent = randInt(rngSky, spec.temp[0], spec.temp[1]) + '°C';
+      document.getElementById('p-grav').textContent = grav;
+      document.getElementById('p-orbit').textContent = moonTxt + ' · ' + RING_LABELS[ringStyle];
+    }
+
+    function randomSeed() {
+      let out = '';
+      for (let i = 0; i < 6; i++) out += CHARS[Math.floor(Math.random() * CHARS.length)];
+      seedInput.value = out;
+      drawFromSeed(out);
+    }
+
+    seedInput.addEventListener('input', () => {
+      const clean = seedInput.value.toUpperCase().replace(/[^0-9A-Z]/g, '');
+      seedInput.value = clean;
+      drawFromSeed(clean);
+    });
+
+    canvas.onclick = document.getElementById('rnd-btn').onclick = randomSeed;
+    window.onkeydown = (e) => {
+      if (document.activeElement !== seedInput && e.code === 'Space') randomSeed();
+    };
+
+    randomSeed();
+  </script>
+</body>
+</html>
